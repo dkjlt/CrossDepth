@@ -2,11 +2,11 @@
 seed_everything: true
 trainer:
   accelerator: auto
-  # strategy: auto
-  strategy: 'ddp_find_unused_parameters_true'
+  strategy: auto
+  # strategy: 'ddp_find_unused_parameters_true'
   devices: auto
   num_nodes: 1
-  precision: null
+  precision: 16
   logger: null
   callbacks:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
@@ -60,7 +60,7 @@ model:
 data:
   class_path: dataloader.dataset.DDFF12DataModule # Path to your dataloader Module in dataset.py
   init_args:
-    ddff12_data_root: '/home/jerryyan/workspace/HybridDepth/dataset/my_ddff_trainVal.h5' # Path to your dataset
+    ddff12_data_root: '/home/jerryyan/workspace/dataset1/my_ddff_trainVal.h5' # Path to your dataset
     img_size: [224,224] 
     batch_size: 8 # Adjust batch size
     num_workers: 15  # Adjust based on your requirements

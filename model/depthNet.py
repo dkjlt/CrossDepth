@@ -5,6 +5,8 @@ from .modules.midas.midas_net_custom import MidasNet_small_videpth
 from .modules.DFV import DFFNet
 from .modules.GlobalScaleEstimator import LeastSquaresEstimator
 from .modules.depth_anything.dpt import DepthAnything
+from .modules.Attention import TransformerFusion
+from .modules.CrossAttention import DepthFusionCrossViT
 
 
 class DepthNet(nn.Module):
@@ -21,7 +23,8 @@ class DepthNet(nn.Module):
 
         self.DFF_model = DFFNet(clean=False, level=4, use_diff=1)
         self.DFF_model.cuda()
-        DFV_weights = None  # Don't need this for evaluation, only add for training
+        # DFV_weights = None  # Don't need this for evaluation, only add for training
+        DFV_weights = "/mnt/sda1/zg_workspace/DFF-DFV.tar"
 
         if DFV_weights is not None:
             pretrained_dict = torch.load(DFV_weights)
@@ -39,19 +42,14 @@ class DepthNet(nn.Module):
         self.DFF_model.eval()
         self.DFF_model.requires_grad_(False)
 
-        self.ScaleMapLearner = MidasNet_small_videpth(
-            path=None,
-            min_pred=0.02,
-            max_pred=0.28,
-            backbone="efficientnet_lite3",
-            in_channels=3
-        )
-        self.ScaleMapLearner.train()
+        # self.transformer_fusion = TransformerFusion()
+        self.depth_fusion = DepthFusionCrossViT()
 
     def predic_depth_rel(self, batch):
         org_size = batch.shape
         batch = F.interpolate(batch, size=(518, 518), mode='bicubic', align_corners=True)
-        depth = self.depth_anything(batch).unsqueeze(1)
+        with torch.no_grad():
+            depth = self.depth_anything(batch).unsqueeze(1)
         depth = F.interpolate(depth, size=(org_size[2], org_size[3]), mode='bicubic', align_corners=True)
         return depth
 
@@ -70,31 +68,7 @@ class DepthNet(nn.Module):
             rel_depth = 1.0 / rel_depth
             rel_depth[rel_depth == float("inf")] = 0
 
-        GlobalAlignment = LeastSquaresEstimator(
-            estimate=rel_depth,
-            target=pred_dff,
-            valid=valid_mask
-        )
+        # metric_depth, _ = self.transformer_fusion(rel_depth, pred_dff, std)
+        metric_depth = self.depth_fusion(pred_dff, rel_depth, std)
 
-        GlobalAlignment.compute_scale_and_shift()
-        GlobalAlignment.apply_scale_and_shift()
-        intr_depth = GlobalAlignment.output.float()
-
-        scale_map = self.scaffholding(intr_depth, pred_dff)
-
-        sample = {"int_depth": intr_depth,
-                  "int_scales": scale_map, "int_depth_no_tf": intr_depth}
-
-        x = torch.cat([sample["int_depth"], sample["int_scales"], std], dim=1)
-        d = sample["int_depth_no_tf"]
-
-        metric_depth, scale_map = self.ScaleMapLearner(x, d)
-
-        return metric_depth, rel_depth, intr_depth, std, pred_dff
-
-    def scaffholding(self, intr_depth, pred_disp):
-        scale_map = torch.ones_like(intr_depth)
-        scale_factors = pred_disp / intr_depth
-        scale_map = torch.where(torch.isfinite(
-            scale_factors), scale_factors, torch.tensor(1.0).to(intr_depth.device))
-        return scale_map
+        return metric_depth, rel_depth, metric_depth, std, pred_dff
