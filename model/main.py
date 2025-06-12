@@ -90,7 +90,7 @@ class DepthNetModule(pl.LightningModule):
         with torch.no_grad():
             # Run forward pass.
             start_time = gettime()
-            depth_prd, rel_depth, gl_depth, _, scale_map = self.forward(
+            depth_prd, rel_depth, gl_depth, std, scale_map = self.forward(
                 rgb_aif, focal_stack, focus_dist)
             time = (gettime() - start_time)
 
@@ -102,6 +102,9 @@ class DepthNetModule(pl.LightningModule):
                         if depth_prd.is_cuda else depth_prd.numpy())
         depth_gt_np = depth_gt.cpu().numpy() if depth_gt.is_cuda else depth_gt.numpy()
 
+        scale_map_np = scale_map.cpu().numpy() if scale_map.is_cuda else scale_map.numpy()
+        std_np = std.cpu().numpy() if std.is_cuda else std.numpy()
+
         
         # only consider pixels with depth values < 2 meters and > 0
         # mask_np = (depth_gt_np < 2.4) & (depth_gt_np > 0)
@@ -112,10 +115,12 @@ class DepthNetModule(pl.LightningModule):
         metrics = np.append(metrics, time)
 
         self.io.save_metrics_to_csv(metrics)
-        if batch_idx in [0, 10, 20, 30, 100, 110, 160, 180, 380, 400]:
+        if batch_idx in [0, 10, 20, 30, 100, 110, 160, 170, 180, 380, 400]:
                 np.save(f"results/imgs/ours/{batch_idx}_rgb.npy", rgb_aif.cpu().numpy())
                 np.save(f"results/imgs/ours/{batch_idx}_gt.npy", depth_gt_np)
                 np.save(f"results/imgs/ours/{batch_idx}_depth.npy", depth_prd_np)
+                np.save(f"results/imgs/ours/{batch_idx}_dfv.npy", scale_map_np)
+                np.save(f"results/imgs/ours/{batch_idx}_std.npy", std_np)
         self.io.tensors_to_image(rgb_aif, depth_prd, gt_depth=depth_gt, rel_depth=rel_depth,
                                  scale_map=scale_map, gl_depth=gl_depth, metrics=metrics, batch_idx=batch_idx)
 

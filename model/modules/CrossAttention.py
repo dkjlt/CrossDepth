@@ -75,7 +75,8 @@ class DepthFusionCrossViT(nn.Module):
         ])
 
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(embed_dim * 2, 64, kernel_size=4, stride=4),
+            nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False),
+            nn.Conv2d(embed_dim * 2, 64, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(64, 1, kernel_size=3, padding=1)
         )
@@ -101,6 +102,7 @@ class DepthFusionCrossViT(nn.Module):
         fused_map = fused.transpose(1, 2).reshape(B, -1, h_p, w_p)
 
         out = self.decoder(fused_map)
-        out = torch.clamp(out, 0.02, 0.28)
+        out = F.avg_pool2d(out, 3, 1, 1)
+        out = torch.clamp(out, 0.02, 0.5)
 
         return out
